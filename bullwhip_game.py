@@ -373,7 +373,7 @@ def page_play():
     if status == "finished": ss["page"]="results"; st.rerun()
 
     pct = int(week / max(total,1) * 100)
-    topbar(right_html=f'{rb_html(role)}&nbsp;&nbsp;<span class="wb">S{week}/{total}</span>')
+    topbar(right=f'{rb_html(role)}&nbsp;&nbsp;<span class="wb">S{week}/{total}</span>')
 
     pb(pct, m["dot"], f"Chaîne {ss['chain']} · Semaine {week}", f"{pct}% — {total-week} sem. restantes")
 
