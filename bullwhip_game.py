@@ -4,6 +4,7 @@ Design : Light Clean · Outfit · ESLI Paris
 """
 
 import streamlit as st
+from game_engine import PedagogyEngine, CALENDAR_EVENTS, LEAD_TIMES
 import requests
 import json
 import pandas as pd
