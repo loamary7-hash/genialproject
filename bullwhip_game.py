@@ -349,13 +349,60 @@ def page_join():
 
     if ok:
         if not name.strip(): st.error("⚠️ Entre ton prénom."); return
-        with st.spinner("Connexion..."):
-            resp = api_post({"action":"joinSession","sessionCode":code.strip().upper(),
-                             "playerName":name.strip(),"chain":chain,"role":role})
-        if "error" in resp: st.error(f"❌ {resp['error']}")
+
+        session_code_clean = code.strip().upper()
+
+        with st.spinner("Connexion en cours..."):
+            resp = api_post({
+                "action":      "joinSession",
+                "sessionCode": session_code_clean,
+                "playerName":  name.strip(),
+                "chain":       chain,
+                "role":        role,
+            })
+
+        # ── Rôle déjà pris → tentative de reconnexion ──────────────────────
+        if resp.get("error","").lower().find("déjà pris") != -1 or            resp.get("error","").lower().find("already") != -1:
+
+            with st.spinner("Rôle existant détecté — reconnexion..."):
+                resp2 = api_post({
+                    "action":      "reconnectPlayer",
+                    "sessionCode": session_code_clean,
+                    "playerName":  name.strip(),
+                    "chain":       chain,
+                    "role":        role,
+                })
+
+            if "error" in resp2:
+                st.error(f"❌ Impossible de te reconnecter : {resp2['error']}")
+                st.info("💡 Vérifie que tu utilises exactement le même prénom, la même chaîne et le même rôle qu'avant ta déconnexion.")
+            else:
+                st.success("✅ Reconnexion réussie !")
+                ss.update({
+                    "player_id":    resp2["playerId"],
+                    "session_code": session_code_clean,
+                    "player_name":  name.strip(),
+                    "chain":        chain,
+                    "role":         role,
+                    "page":         "play",
+                    "order_sent":   resp2.get("orderSentThisRound", False),
+                    "order_history": resp2.get("orderHistory", []),
+                })
+                st.rerun()
+
+        elif "error" in resp:
+            st.error(f"❌ {resp['error']}")
+
         else:
-            ss.update({"player_id":resp["playerId"],"session_code":code.strip().upper(),
-                       "player_name":name.strip(),"chain":chain,"role":role,"page":"play","order_sent":False})
+            ss.update({
+                "player_id":    resp["playerId"],
+                "session_code": session_code_clean,
+                "player_name":  name.strip(),
+                "chain":        chain,
+                "role":         role,
+                "page":         "play",
+                "order_sent":   False,
+            })
             st.rerun()
 
 # ── PAGE : PLAY ───────────────────────────────────────────────────────────────
@@ -709,10 +756,23 @@ def page_results():
             </div>""", unsafe_allow_html=True)
 
     st.write("")
-    if st.button("← Retour à l'accueil"):
-        for k in ["player_id","page","order_history","order_sent","current_state"]:
-            st.session_state.pop(k,None)
-        ss["page"]="home"; st.rerun()
+    col_b1, col_b2, _ = st.columns([1.2, 1, 1.8])
+    with col_b1:
+        if ss.get("is_facilitator"):
+            if st.button("← Dashboard facilitateur", use_container_width=True, type="primary"):
+                ss["page"] = "facilitator"; st.rerun()
+        else:
+            if st.button("← Retour à l'accueil", use_container_width=True):
+                for k in ["player_id","page","order_history","order_sent","current_state"]:
+                    st.session_state.pop(k, None)
+                ss["page"] = "home"; st.rerun()
+    with col_b2:
+        if ss.get("is_facilitator"):
+            if st.button("🏠 Quitter", use_container_width=True):
+                for k in ["player_id","page","order_history","order_sent","current_state",
+                          "is_facilitator","facilitator_key","session_code"]:
+                    st.session_state.pop(k, None)
+                ss["page"] = "home"; st.rerun()
 
 # ── Router ────────────────────────────────────────────────────────────────────
 page=ss.get("page","home")
