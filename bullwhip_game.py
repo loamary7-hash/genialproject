@@ -443,6 +443,28 @@ def page_play():
 
     if status == "finished": ss["page"]="results"; st.rerun()
 
+    # ── Événement calendrier de la semaine ────────────────────────────────
+    if ENGINE_AVAILABLE:
+        from game_engine import Calendar as _Cal
+        _cal_ev = _Cal().get_event(week)
+        if _cal_ev:
+            st.markdown(f"""
+            <div style="background:{
+                '#F0FDF4' if _cal_ev.demand_multiplier >= 1 else '#FEF2F2'
+            };border:1.5px solid {
+                '#86EFAC' if _cal_ev.demand_multiplier >= 1 else '#FECACA'
+            };border-radius:10px;padding:10px 16px;margin-bottom:14px;
+            display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <span style="font-size:16px">{_cal_ev.emoji}</span>&nbsp;
+                <b style="font-size:13px;color:#1E293B">{_cal_ev.name}</b>
+                <span style="font-size:12px;color:#64748B;margin-left:8px">— {_cal_ev.description}</span>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:{
+                '#059669' if _cal_ev.demand_multiplier >= 1 else '#DC2626'
+              }">Demande ×{_cal_ev.demand_multiplier}</div>
+            </div>""", unsafe_allow_html=True)
+
     pct = int(week / max(total,1) * 100)
     topbar(right=f'{rb_html(role)}&nbsp;&nbsp;<span class="wb">S{week}/{total}</span>', show_home=True)
 
@@ -478,14 +500,32 @@ def page_play():
             up_idx = ROLES.index(role)
             upstream = ROLES[up_idx+1] if up_idx < 3 else "Production"
             up_m = ROLE_META.get(upstream, {})
+            # Texte contextuel selon le rôle
+            _who = "du client final" if role == "Détaillant" else f"du {ROLES[up_idx-1]} (ton client aval)"
+            _lt_info = LEAD_TIMES.get(role, 2) if ENGINE_AVAILABLE else 2
             st.markdown(f"""
-            <div class="order-panel">
-              <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:13px">
-                📤 Commander à → {up_m.get("emoji","")} {upstream}
+            <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:13px;padding:18px 20px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+
+              <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;padding:14px 18px;margin-bottom:14px">
+                <div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">
+                  📥 Commande reçue {_who} — Semaine {week}
+                </div>
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:700;color:#B45309">{last_in}</span>
+                  <span style="font-size:14px;color:#92400E;font-weight:600">unités à livrer</span>
+                </div>
+                <div style="margin-top:8px;font-size:11px;color:#92400E;opacity:.8">
+                  Tu dois expédier ces {last_in}u depuis ton stock.
+                  Si tu n'as pas assez → rupture (backlog).
+                </div>
               </div>
-              <div class="inc-box">
-                <span class="inc-label">Commande reçue ce tour :</span>
-                <span class="inc-val">{last_in} u</span>
+
+              <div style="font-size:12px;font-weight:600;color:#334155;margin-bottom:10px">
+                📤 Ta commande à passer → {up_m.get("emoji","")} {upstream}
+              </div>
+              <div style="font-size:11px;color:#64748B;margin-bottom:4px">
+                ⏱️ Délai de livraison : <b style="color:#1E293B">{_lt_info} semaine(s)</b>
+                — ce que tu commandes aujourd'hui arrive en S{week + _lt_info}
               </div>
             </div>""", unsafe_allow_html=True)
 
@@ -515,53 +555,34 @@ def page_play():
                     ss["order_sent"]=True; st.rerun()
 
         with col_side:
-            sh("Coûts & conseils", "💡")
+            sh("Barème des coûts", "💰")
+            # Seulement les infos objectives — pas de conseil, le joueur réfléchit
             st.markdown(f"""
-            <div class="cost-tile" style="background:#FFFBEB;border:1.5px solid #FDE68A">
-              <div style="font-size:10px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">📦 Stock excédentaire</div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#D97706">0,15 €/u/sem</div>
-            </div>
-            <div class="cost-tile" style="background:#FFF1F2;border:1.5px solid #FECACA">
-              <div style="font-size:10px;font-weight:700;color:#9F1239;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">⚠️ Rupture (backlog)</div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#E11D48">0,50 €/u/sem</div>
+            <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:13px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+
+              <div style="display:flex;justify-content:space-between;align-items:center;
+                   padding:10px 0;border-bottom:1px solid #F1F5F9">
+                <span style="font-size:12px;color:#64748B">📦 Unité en stock</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#D97706">0,15 € / sem</span>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;
+                   padding:10px 0;border-bottom:1px solid #F1F5F9">
+                <span style="font-size:12px;color:#64748B">⚠️ Unité en rupture</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#E11D48">0,50 € / sem</span>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+                <span style="font-size:12px;color:#64748B">📦 Stock actuel</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#1E293B">{stock} u</span>
+              </div>
+
+              <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;margin-top:4px">
+                <div style="font-size:10px;color:#94A3B8;margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.07em">Coût estimé cette semaine</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#1E293B">{(stock*0.15 + backlog*0.50):.2f} €</div>
+              </div>
+
             </div>""", unsafe_allow_html=True)
-
-            if ENGINE_AVAILABLE:
-                # ── Feedbacks intelligents via game_engine ──────────────────
-                from game_engine import Actor as _Actor
-                _mock = _Actor.__new__(_Actor)
-                _mock.role          = role
-                _mock.stock         = stock
-                _mock.backlog       = backlog
-                _mock.total_cost    = cost
-                _mock.hist_stock    = [h["stock"]    for h in ss["order_history"]]
-                _mock.hist_backlog  = [h["backlog"]  for h in ss["order_history"]]
-                _mock.hist_orders   = [h["order"]    for h in ss["order_history"]]
-                _mock.hist_incoming = [h["incoming"] for h in ss["order_history"]]
-                _mock.hist_delivery = []
-                _mock.hist_cost     = [h["cost"]     for h in ss["order_history"]]
-                _mock.lead_time_multiplier = 1.0
-                from game_engine import Pipeline as _Pipeline
-                _mock.pipeline = _Pipeline(lead_time=LEAD_TIMES.get(role,2), init_value=last_in)
-
-                _feedbacks = PedagogyEngine.analyze(_mock, qty, last_in)
-                _alert_map = {"success":"green","warning":"amber","danger":"red","info":"blue"}
-                for _fb in _feedbacks:
-                    _css = _alert_map.get(_fb["type"],"blue")
-                    st.markdown(f'<div class="alt alt-{_css}">{_fb["text"]}</div>', unsafe_allow_html=True)
-
-                # ── Lead time affiché ─────────────────────────────────────
-                _lt = LEAD_TIMES.get(role, 2)
-                _arrival = week + _lt
-                _lt_msg = f"Delai livraison : {_lt} semaine(s). Commande reçue en S{_arrival}."
-                st.markdown(f'<div class="alt alt-blue">&#x23F1; {_lt_msg}</div>', unsafe_allow_html=True)
-                # Feedbacks basiques si game_engine absent
-                if stock==0 and backlog>0:
-                    st.markdown('<div class="alt alt-red">🔴 <b>Rupture !</b> Tu paies 0,50€/u non livrée. Commande davantage.</div>', unsafe_allow_html=True)
-                elif stock>15:
-                    st.markdown('<div class="alt alt-amber">🟡 <b>Stock élevé.</b> Tu paies 0,15€/u. Adapte ta commande à la demande réelle.</div>', unsafe_allow_html=True)
-                elif stock>=4 and backlog==0:
-                    st.markdown('<div class="alt alt-green">🟢 <b>Bonne gestion !</b> Stock équilibré, pas de rupture.</div>', unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="wait">
