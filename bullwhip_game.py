@@ -200,12 +200,20 @@ init_state()
 ss = st.session_state
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def topbar(right=""):
+def topbar(right="", show_home=False):
     st.markdown(f"""
     <div class="topbar">
       <div class="brand">📦 Bullwhip Game <span class="brand-sub">· ESLI Paris</span></div>
       <div style="display:flex;align-items:center;gap:9px">{right}</div>
     </div>""", unsafe_allow_html=True)
+    if show_home:
+        col_h, _ = st.columns([1, 5])
+        with col_h:
+            if st.button("🏠 Accueil", key="topbar_home_btn", use_container_width=True):
+                for k in ["player_id","page","order_history","order_sent","current_state"]:
+                    st.session_state.pop(k, None)
+                st.session_state["page"] = "home"
+                st.rerun()
 
 def sh(label, icon=""):
     st.markdown(f'<div class="sh">{icon+" " if icon else ""}{label}</div>', unsafe_allow_html=True)
@@ -374,10 +382,19 @@ def page_join():
                 })
 
             if "error" in resp2:
-                st.error(f"❌ Impossible de te reconnecter : {resp2['error']}")
-                st.info("💡 Vérifie que tu utilises exactement le même prénom, la même chaîne et le même rôle qu'avant ta déconnexion.")
+                err_msg = resp2["error"]
+                st.error(f"❌ {err_msg}")
+                # Guide précis selon le type d'erreur
+                if "introuvable" in err_msg.lower() or "not found" in err_msg.lower():
+                    st.markdown("""
+                    <div class="alt alt-amber">
+                      ⚠️ <b>Reconnexion impossible.</b> Vérifie ces 3 points :<br>
+                      &nbsp;&nbsp;• <b>Prénom</b> : exactement le même qu'à l'inscription (majuscules comprises)<br>
+                      &nbsp;&nbsp;• <b>Chaîne</b> : la même lettre qu'à l'inscription<br>
+                      &nbsp;&nbsp;• <b>Rôle</b> : exactement le même rôle qu'à l'inscription
+                    </div>""", unsafe_allow_html=True)
             else:
-                st.success("✅ Reconnexion réussie !")
+                st.success(f"✅ Reconnexion réussie ! Bienvenue {resp2.get('playerName', name.strip())} 👋")
                 ss.update({
                     "player_id":    resp2["playerId"],
                     "session_code": session_code_clean,
@@ -420,7 +437,7 @@ def page_play():
     if status == "finished": ss["page"]="results"; st.rerun()
 
     pct = int(week / max(total,1) * 100)
-    topbar(right=f'{rb_html(role)}&nbsp;&nbsp;<span class="wb">S{week}/{total}</span>')
+    topbar(right=f'{rb_html(role)}&nbsp;&nbsp;<span class="wb">S{week}/{total}</span>', show_home=True)
 
     pb(pct, m["dot"], f"Chaîne {ss['chain']} · Semaine {week}", f"{pct}% — {total-week} sem. restantes")
 
@@ -588,7 +605,7 @@ def page_facilitator():
         return
 
     masked = ss["facilitator_key"][:2]+"••••"
-    topbar(right=f'<span style="font-size:11px;color:#94A3B8;font-weight:500">🔑 {masked} · {ss["session_code"]}</span>')
+    topbar(right=f'<span style="font-size:11px;color:#94A3B8;font-weight:500">🔑 {masked} · {ss["session_code"]}</span>', show_home=True)
 
     data = api_get({"action":"getFacDashboard","sessionCode":ss["session_code"]})
     if "error" in data: st.error(f"❌ {data['error']}"); return
