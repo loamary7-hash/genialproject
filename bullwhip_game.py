@@ -4,11 +4,17 @@ Design : Light Clean · Outfit · ESLI Paris
 """
 
 import streamlit as st
-from game_engine import PedagogyEngine, CALENDAR_EVENTS, LEAD_TIMES
 import requests
 import json
 import pandas as pd
 import plotly.graph_objects as go
+
+# ── game_engine : enrichissement pédagogique local ──────────────────────────
+try:
+    from game_engine import PedagogyEngine, CALENDAR_EVENTS, LEAD_TIMES
+    ENGINE_AVAILABLE = True
+except ImportError:
+    ENGINE_AVAILABLE = False  # si game_engine.py absent, l'app fonctionne quand même
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_VmabDh4BVYLVIeHDKBmwcCykXsrM-LIr_hGxWd9Jp36-GGSXggiE59aQe1eIg7XqnQ/exec"
@@ -520,12 +526,42 @@ def page_play():
               <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#E11D48">0,50 €/u/sem</div>
             </div>""", unsafe_allow_html=True)
 
-            if stock==0 and backlog>0:
-                st.markdown('<div class="alt alt-red">🔴 <b>Rupture !</b> Tu paies 0,50€/u non livrée. Commande davantage.</div>', unsafe_allow_html=True)
-            elif stock>15:
-                st.markdown('<div class="alt alt-amber">🟡 <b>Stock élevé.</b> Tu paies 0,15€/u. Adapte ta commande à la demande réelle.</div>', unsafe_allow_html=True)
-            elif stock>=4 and backlog==0:
-                st.markdown('<div class="alt alt-green">🟢 <b>Bonne gestion !</b> Stock équilibré, pas de rupture.</div>', unsafe_allow_html=True)
+            if ENGINE_AVAILABLE:
+                # ── Feedbacks intelligents via game_engine ──────────────────
+                from game_engine import Actor as _Actor
+                _mock = _Actor.__new__(_Actor)
+                _mock.role          = role
+                _mock.stock         = stock
+                _mock.backlog       = backlog
+                _mock.total_cost    = cost
+                _mock.hist_stock    = [h["stock"]    for h in ss["order_history"]]
+                _mock.hist_backlog  = [h["backlog"]  for h in ss["order_history"]]
+                _mock.hist_orders   = [h["order"]    for h in ss["order_history"]]
+                _mock.hist_incoming = [h["incoming"] for h in ss["order_history"]]
+                _mock.hist_delivery = []
+                _mock.hist_cost     = [h["cost"]     for h in ss["order_history"]]
+                _mock.lead_time_multiplier = 1.0
+                from game_engine import Pipeline as _Pipeline
+                _mock.pipeline = _Pipeline(lead_time=LEAD_TIMES.get(role,2), init_value=last_in)
+
+                _feedbacks = PedagogyEngine.analyze(_mock, qty, last_in)
+                _alert_map = {"success":"green","warning":"amber","danger":"red","info":"blue"}
+                for _fb in _feedbacks:
+                    _css = _alert_map.get(_fb["type"],"blue")
+                    st.markdown(f'<div class="alt alt-{_css}">{_fb["text"]}</div>', unsafe_allow_html=True)
+
+                # ── Lead time affiché ─────────────────────────────────────
+                _lt = LEAD_TIMES.get(role, 2)
+                _arrival = week + _lt
+                _lt_msg = f"Delai livraison : {_lt} semaine(s). Commande reçue en S{_arrival}."
+                st.markdown(f'<div class="alt alt-blue">&#x23F1; {_lt_msg}</div>', unsafe_allow_html=True)
+                # Feedbacks basiques si game_engine absent
+                if stock==0 and backlog>0:
+                    st.markdown('<div class="alt alt-red">🔴 <b>Rupture !</b> Tu paies 0,50€/u non livrée. Commande davantage.</div>', unsafe_allow_html=True)
+                elif stock>15:
+                    st.markdown('<div class="alt alt-amber">🟡 <b>Stock élevé.</b> Tu paies 0,15€/u. Adapte ta commande à la demande réelle.</div>', unsafe_allow_html=True)
+                elif stock>=4 and backlog==0:
+                    st.markdown('<div class="alt alt-green">🟢 <b>Bonne gestion !</b> Stock équilibré, pas de rupture.</div>', unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="wait">
@@ -699,6 +735,20 @@ def page_results():
     roles_ok=[r for r in ROLES if r in bwr and bwr[r]]
     avg=[sum(bwr[r])/len(bwr[r]) for r in roles_ok if bwr[r]]
 
+    # ── Recalcul local via game_engine si disponible ──────────────────────
+    if ENGINE_AVAILABLE and players:
+        _records = []
+        for p in players:
+            if isinstance(p, dict):
+                _records.append(p)
+        if _records:
+            for _r in roles_ok:
+                _orders  = [float(v) for v in bwr[_r] if v]
+                _demands = [float(v) for v in bwr.get("demands", _orders)]
+                _local_bwi = PedagogyEngine.bullwhip_index(_orders, _orders)
+                if _local_bwi is not None:
+                    avg[roles_ok.index(_r)] = max(avg[roles_ok.index(_r)], _local_bwi)
+
     if roles_ok and avg:
         col_ch,col_lg = st.columns([1.8,1],gap="large")
         with col_ch:
@@ -752,6 +802,21 @@ def page_results():
             df=pd.DataFrame(records).sort_values("Coût total (€)")
             st.dataframe(df,use_container_width=True,hide_index=True,
                          column_config={"Coût total (€)":st.column_config.NumberColumn(format="%.2f €")})
+
+    # ── Calendrier et événements si game_engine disponible ──────────────────
+    if ENGINE_AVAILABLE:
+        sh("Calendrier & événements saisonniers", "📅")
+        cal_cols = st.columns(3)
+        for _i, _ev in enumerate(CALENDAR_EVENTS[:6]):
+            with cal_cols[_i % 3]:
+                st.markdown(f"""
+                <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;
+                     padding:9px 12px;margin-bottom:8px;font-size:11px">
+                  <span style="font-size:16px">{_ev.emoji}</span>&nbsp;
+                  <b style="color:#1E293B">S{_ev.week} — {_ev.name}</b><br>
+                  <span style="color:#64748B">{_ev.description}</span>
+                </div>""", unsafe_allow_html=True)
+        st.write("")
 
     sh("Enseignements pédagogiques", "🎓")
     insights=[
